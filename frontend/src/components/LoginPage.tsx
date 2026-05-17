@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { CaptchaSession, LoginResult } from './types'
-import { getCampuses, getCaptchaSession, login } from './api'
+import type { CaptchaSession, LoginResult } from '../types'
+import { getCampuses, getCaptchaSession, login } from '../api'
 
 interface Props {
   onLogin: (result: LoginResult) => void

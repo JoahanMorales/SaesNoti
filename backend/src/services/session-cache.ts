@@ -3,27 +3,29 @@ import { Credentials } from './saes-scraper'
 interface CachedSession {
   credentials: Credentials
   username: string
+  password: string
   campusId: string
   expiresAt: number
   lastRefresh: number
+  lastKeepAlive: number
+  alive: boolean
 }
 
 const SESSION_TTL_MS = 30 * 60 * 1000
-const REFRESH_BEFORE_EXPIRE_MS = 5 * 60 * 1000
 
 export class SessionCache {
   private cache = new Map<string, CachedSession>()
-  private refreshTimer: ReturnType<typeof setInterval> | null = null
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null
 
-  start(refreshIntervalMs = 5 * 60 * 1000): void {
-    if (this.refreshTimer) clearInterval(this.refreshTimer)
-    this.refreshTimer = setInterval(() => this.refreshExpired(), refreshIntervalMs)
+  start(intervalMs = 10 * 60 * 1000): void {
+    if (this.keepAliveTimer) clearInterval(this.keepAliveTimer)
+    this.keepAliveTimer = setInterval(() => this.cleanup(), intervalMs)
   }
 
   stop(): void {
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer)
-      this.refreshTimer = null
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer)
+      this.keepAliveTimer = null
     }
   }
 
@@ -35,14 +37,11 @@ export class SessionCache {
     return this.cache.get(key)
   }
 
-  has(key: string): boolean {
-    const session = this.cache.get(key)
-    if (!session) return false
-    if (Date.now() > session.expiresAt) {
-      this.cache.delete(key)
-      return false
+  update(key: string, updates: Partial<CachedSession>): void {
+    const existing = this.cache.get(key)
+    if (existing) {
+      this.cache.set(key, { ...existing, ...updates })
     }
-    return true
   }
 
   delete(key: string): void {
@@ -53,16 +52,26 @@ export class SessionCache {
     return new Map(this.cache)
   }
 
-  needsRefresh(key: string): boolean {
-    const session = this.cache.get(key)
-    if (!session) return false
-    return Date.now() > session.expiresAt - REFRESH_BEFORE_EXPIRE_MS
+  getActiveSessions(): Map<string, CachedSession> {
+    const active = new Map<string, CachedSession>()
+    for (const [key, session] of this.cache.entries()) {
+      if (session.alive) active.set(key, session)
+    }
+    return active
   }
 
-  private refreshExpired(): void {
+  markAlive(key: string): void {
+    this.update(key, { alive: true, lastKeepAlive: Date.now() })
+  }
+
+  markDead(key: string): void {
+    this.update(key, { alive: false })
+  }
+
+  private cleanup(): void {
     const now = Date.now()
     for (const [key, session] of this.cache.entries()) {
-      if (now > session.expiresAt) {
+      if (!session.alive && now - session.lastKeepAlive > 60 * 60 * 1000) {
         this.cache.delete(key)
       }
     }
@@ -70,6 +79,14 @@ export class SessionCache {
 
   getSessionCount(): number {
     return this.cache.size
+  }
+
+  getActiveCount(): number {
+    let count = 0
+    for (const s of this.cache.values()) {
+      if (s.alive) count++
+    }
+    return count
   }
 }
 

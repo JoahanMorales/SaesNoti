@@ -52,9 +52,12 @@ export async function login(req: Request, res: Response) {
     sessionCache.set(sessionId, {
       credentials,
       username: loginData.username,
+      password: loginData.password,
       campusId,
       expiresAt: loginResponse.expires,
-      lastRefresh: Date.now()
+      lastRefresh: Date.now(),
+      lastKeepAlive: Date.now(),
+      alive: true
     })
 
     res.json({ sessionId, ...loginResponse, campus: campusId })
