@@ -84,13 +84,14 @@ export async function checkGradeChanges() {
       const calificaciones = await scraper.getUserCalificaciones(cached.credentials)
       const prevGrades = lastGrades.get(sessionId) ?? new Map()
       const newGrades = new Map<string, string>()
+      const isFirstRun = prevGrades.size === 0
 
       for (const cal of calificaciones) {
         const key = `${cal.clave}-${cal.grupo}`
         const grade = cal.calificacion || '-'
         newGrades.set(key, grade)
 
-        if (prevGrades.has(key)) {
+        if (!isFirstRun && prevGrades.has(key)) {
           const prev = prevGrades.get(key)!
           if (prev !== grade && grade !== '-') {
             await telegram.sendGradeUpdate(
@@ -102,13 +103,17 @@ export async function checkGradeChanges() {
             )
             console.log(`[Telegram] ${cal.asignatura}: ${prev} → ${grade}`)
           }
-        } else if (grade !== '-') {
+        } else if (!isFirstRun && grade !== '-') {
           await telegram.sendNewSubject(cached.username, cal.asignatura, cached.campusId.toUpperCase())
           console.log(`[Telegram] Nueva materia: ${cal.asignatura}`)
         }
       }
 
       lastGrades.set(sessionId, newGrades)
+
+      if (isFirstRun) {
+        console.log(`[Monitor] Estado inicial cargado para ${cached.username} (sin notificaciones).`)
+      }
     } catch (error) {
       console.error(`[Monitor] Error para ${cached.username}: ${(error as Error).message}`)
     }
